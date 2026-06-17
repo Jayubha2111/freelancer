@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { IndianRupee, Globe, Building2, RefreshCw } from "lucide-react";
 import { formatIndianNumber } from "@/lib/formatters";
+import type { YearConfig } from "@/lib/taxCalculator";
 
 interface IncomeInputProps {
   monthlyIncome: number;
@@ -15,6 +16,7 @@ interface IncomeInputProps {
   onIncomeFromAbroadChange: (v: boolean) => void;
   onGstRegisteredChange: (v: boolean) => void;
   onTaxRegimeChange: (v: "old" | "new") => void;
+  taxConfig: YearConfig;
 }
 
 export default function IncomeInput({
@@ -28,6 +30,7 @@ export default function IncomeInput({
   onIncomeFromAbroadChange,
   onGstRegisteredChange,
   onTaxRegimeChange,
+  taxConfig,
 }: IncomeInputProps) {
   return (
     <motion.div
@@ -139,7 +142,7 @@ export default function IncomeInput({
                 : "border-card-border bg-card hover:border-gray-600"
             }`}
           >
-            <div className="font-semibold text-white mb-1">New Regime 2024</div>
+            <div className="font-semibold text-white mb-1">New Regime ({taxConfig.label})</div>
             <div className="text-xs text-gray-400">
               Lower rates, no deductions
             </div>

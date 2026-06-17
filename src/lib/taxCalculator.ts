@@ -43,33 +43,37 @@ export interface TaxResult {
   regime: "old" | "new";
 }
 
-const NEW_REGIME_SLABS = [
-  { min: 0, max: 300000, rate: 0 },
-  { min: 300000, max: 700000, rate: 5 },
-  { min: 700000, max: 1000000, rate: 10 },
-  { min: 1000000, max: 1200000, rate: 15 },
-  { min: 1200000, max: 1500000, rate: 20 },
-  { min: 1500000, max: Infinity, rate: 30 },
-];
+export interface Slab {
+  min: number;
+  max: number | null;
+  rate: number;
+}
 
-const OLD_REGIME_SLABS = [
-  { min: 0, max: 250000, rate: 0 },
-  { min: 250000, max: 500000, rate: 5 },
-  { min: 500000, max: 1000000, rate: 20 },
-  { min: 1000000, max: Infinity, rate: 30 },
-];
+export interface YearConfig {
+  label: string;
+  newRegimeSlabs: Slab[];
+  oldRegimeSlabs: Slab[];
+  newStandardDeduction: number;
+  oldStandardDeduction: number;
+  newRebateLimit: number;
+  newRebateAmount: number;
+  oldRebateLimit: number;
+  oldRebateAmount: number;
+}
 
-const NEW_STANDARD_DEDUCTION = 75000;
-const OLD_STANDARD_DEDUCTION = 50000;
+function resolveSlabs(slabs: Slab[]): { min: number; max: number; rate: number }[] {
+  return slabs.map((s) => ({ ...s, max: s.max ?? Infinity }));
+}
 
 function calculateTaxForSlabs(
   taxableIncome: number,
-  slabs: { min: number; max: number; rate: number }[]
+  slabs: Slab[]
 ): { totalTax: number; slabDetails: SlabDetail[] } {
+  const resolved = resolveSlabs(slabs);
   let totalTax = 0;
   const slabDetails: SlabDetail[] = [];
 
-  for (const slab of slabs) {
+  for (const slab of resolved) {
     const slabMin = slab.min;
     const slabMax = slab.max === Infinity ? taxableIncome : slab.max;
     if (taxableIncome > slabMin) {
@@ -103,23 +107,22 @@ function calculateTaxForSlabs(
   return { totalTax, slabDetails };
 }
 
-export function calculateTax(input: TaxInput): TaxResult {
+export function calculateTax(input: TaxInput, config: YearConfig): TaxResult {
   const annualIncome = input.monthlyIncome * 12 + input.otherIncome;
 
   if (input.taxRegime === "new") {
-    const stdDeduction = NEW_STANDARD_DEDUCTION;
+    const stdDeduction = config.newStandardDeduction;
     const taxableIncome = Math.max(0, annualIncome - stdDeduction);
-
     const { totalTax: taxBeforeRebate, slabDetails } = calculateTaxForSlabs(
       taxableIncome,
-      NEW_REGIME_SLABS
+      config.newRegimeSlabs
     );
 
     let rebate87A = 0;
     let taxAfterRebate = taxBeforeRebate;
-    if (taxableIncome <= 700000) {
-      rebate87A = taxBeforeRebate;
-      taxAfterRebate = 0;
+    if (taxableIncome <= config.newRebateLimit) {
+      rebate87A = Math.min(taxBeforeRebate, config.newRebateAmount);
+      taxAfterRebate = taxBeforeRebate - rebate87A;
     }
 
     const cess = taxAfterRebate * 0.04;
@@ -144,55 +147,54 @@ export function calculateTax(input: TaxInput): TaxResult {
       slabs: slabDetails,
       regime: "new",
     };
-  } else {
-    const stdDeduction = OLD_STANDARD_DEDUCTION;
-    const deductions = input.deductions;
-    const totalDeductions =
-      deductions.section80C +
-      deductions.section80D +
-      deductions.hra +
-      deductions.homeLoanInterest +
-      deductions.professionalTax +
-      deductions.nps80CCD +
-      deductions.businessExpenses;
-
-    const taxableIncome = Math.max(0, annualIncome - totalDeductions - stdDeduction);
-
-    const { totalTax: taxBeforeRebate, slabDetails } = calculateTaxForSlabs(
-      taxableIncome,
-      OLD_REGIME_SLABS
-    );
-
-    let rebate87A = 0;
-    let taxAfterRebate = taxBeforeRebate;
-    if (taxableIncome <= 500000) {
-      rebate87A = taxBeforeRebate;
-      taxAfterRebate = 0;
-    }
-
-    const cess = taxAfterRebate * 0.04;
-    const totalTax = taxAfterRebate + cess;
-    const monthlyTax = totalTax / 12;
-    const inHandAmount = annualIncome - totalTax;
-    const effectiveTaxRate = annualIncome > 0 ? (totalTax / annualIncome) * 100 : 0;
-
-    return {
-      grossIncome: annualIncome,
-      totalDeductions,
-      standardDeduction: stdDeduction,
-      taxableIncome,
-      taxBeforeRebate,
-      rebate87A,
-      taxAfterRebate,
-      cess,
-      totalTax,
-      monthlyTax,
-      inHandAmount,
-      effectiveTaxRate,
-      slabs: slabDetails,
-      regime: "old",
-    };
   }
+
+  const stdDeduction = config.oldStandardDeduction;
+  const deductions = input.deductions;
+  const totalDeductions =
+    deductions.section80C +
+    deductions.section80D +
+    deductions.hra +
+    deductions.homeLoanInterest +
+    deductions.professionalTax +
+    deductions.nps80CCD +
+    deductions.businessExpenses;
+
+  const taxableIncome = Math.max(0, annualIncome - totalDeductions - stdDeduction);
+  const { totalTax: taxBeforeRebate, slabDetails } = calculateTaxForSlabs(
+    taxableIncome,
+    config.oldRegimeSlabs
+  );
+
+  let rebate87A = 0;
+  let taxAfterRebate = taxBeforeRebate;
+  if (taxableIncome <= config.oldRebateLimit) {
+    rebate87A = Math.min(taxBeforeRebate, config.oldRebateAmount);
+    taxAfterRebate = taxBeforeRebate - rebate87A;
+  }
+
+  const cess = taxAfterRebate * 0.04;
+  const totalTax = taxAfterRebate + cess;
+  const monthlyTax = totalTax / 12;
+  const inHandAmount = annualIncome - totalTax;
+  const effectiveTaxRate = annualIncome > 0 ? (totalTax / annualIncome) * 100 : 0;
+
+  return {
+    grossIncome: annualIncome,
+    totalDeductions,
+    standardDeduction: stdDeduction,
+    taxableIncome,
+    taxBeforeRebate,
+    rebate87A,
+    taxAfterRebate,
+    cess,
+    totalTax,
+    monthlyTax,
+    inHandAmount,
+    effectiveTaxRate,
+    slabs: slabDetails,
+    regime: "old",
+  };
 }
 
 export function calculateGST(turnover: number, rate: number): number {
@@ -250,11 +252,9 @@ export interface SavingsSuggestion {
   maxLimit?: number;
 }
 
-export function getSavingsSuggestions(
-  input: TaxInput
-): SavingsSuggestion[] {
+export function getSavingsSuggestions(input: TaxInput, config: YearConfig): SavingsSuggestion[] {
   const suggestions: SavingsSuggestion[] = [];
-  const marginalRate = getMarginalRate(input);
+  const marginalRate = getMarginalRate(input, config);
 
   if (input.taxRegime === "old") {
     const remaining80C = Math.max(0, 150000 - input.deductions.section80C);
@@ -300,26 +300,27 @@ export function getSavingsSuggestions(
   return suggestions;
 }
 
-function getMarginalRate(input: TaxInput): number {
+function getMarginalRate(input: TaxInput, config: YearConfig): number {
   const annualIncome = input.monthlyIncome * 12 + input.otherIncome;
   if (input.taxRegime === "new") {
-    const taxable = Math.max(0, annualIncome - NEW_STANDARD_DEDUCTION);
-    for (let i = NEW_REGIME_SLABS.length - 1; i >= 0; i--) {
-      if (taxable > NEW_REGIME_SLABS[i].min) return NEW_REGIME_SLABS[i].rate;
-    }
-    return 0;
-  } else {
-    const deductions = input.deductions;
-    const totalDed = Object.values(deductions).reduce((a, b) => a + b, 0);
-    const taxable = Math.max(0, annualIncome - totalDed - OLD_STANDARD_DEDUCTION);
-    for (let i = OLD_REGIME_SLABS.length - 1; i >= 0; i--) {
-      if (taxable > OLD_REGIME_SLABS[i].min) return OLD_REGIME_SLABS[i].rate;
+    const taxable = Math.max(0, annualIncome - config.newStandardDeduction);
+    const slabs = resolveSlabs(config.newRegimeSlabs);
+    for (let i = slabs.length - 1; i >= 0; i--) {
+      if (taxable > slabs[i].min) return slabs[i].rate;
     }
     return 0;
   }
+  const deductions = input.deductions;
+  const totalDed = Object.values(deductions).reduce((a, b) => a + b, 0);
+  const taxable = Math.max(0, annualIncome - totalDed - config.oldStandardDeduction);
+  const slabs = resolveSlabs(config.oldRegimeSlabs);
+  for (let i = slabs.length - 1; i >= 0; i--) {
+    if (taxable > slabs[i].min) return slabs[i].rate;
+  }
+  return 0;
 }
 
-export function compareRegimes(input: TaxInput): {
+export function compareRegimes(input: TaxInput, config: YearConfig): {
   oldTax: TaxResult;
   newTax: TaxResult;
   betterRegime: "old" | "new";
@@ -327,8 +328,8 @@ export function compareRegimes(input: TaxInput): {
 } {
   const oldInput = { ...input, taxRegime: "old" as const };
   const newInput = { ...input, taxRegime: "new" as const };
-  const oldResult = calculateTax(oldInput);
-  const newResult = calculateTax(newInput);
+  const oldResult = calculateTax(oldInput, config);
+  const newResult = calculateTax(newInput, config);
 
   if (oldResult.totalTax <= newResult.totalTax) {
     return {

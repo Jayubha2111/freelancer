@@ -10,11 +10,12 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { formatIndianNumber } from "@/lib/formatters";
-import type { TaxInput } from "@/lib/taxCalculator";
+import type { TaxInput, YearConfig } from "@/lib/taxCalculator";
 import { getSavingsSuggestions } from "@/lib/taxCalculator";
 
 interface SavingsPlannerProps {
   input: TaxInput;
+  taxConfig: YearConfig;
 }
 
 function getEmergencyFund(monthlyExpenses: number): number {
@@ -34,8 +35,8 @@ function getSipSuggestion(potentialSavings: number): {
   return { monthlySip, years5, years10, years20 };
 }
 
-export default function SavingsPlanner({ input }: SavingsPlannerProps) {
-  const suggestions = getSavingsSuggestions(input);
+export default function SavingsPlanner({ input, taxConfig }: SavingsPlannerProps) {
+  const suggestions = getSavingsSuggestions(input, taxConfig);
   const monthlyExpenses = Math.round(input.monthlyIncome * 0.6);
   const emergencyFund = getEmergencyFund(monthlyExpenses);
   const potentialSavings =

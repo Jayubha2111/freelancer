@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { formatIndianNumber } from "@/lib/formatters";
 import { calculateTax, compareRegimes } from "@/lib/taxCalculator";
-import type { Deductions, TaxInput } from "@/lib/taxCalculator";
+import type { Deductions, TaxInput, YearConfig } from "@/lib/taxCalculator";
 import Navbar from "@/components/Navbar";
 import IncomeInput from "@/components/IncomeInput";
 import DeductionInput from "@/components/DeductionInput";
@@ -73,6 +73,18 @@ export default function Dashboard() {
   const [taxRegime, setTaxRegime] = useState<"old" | "new">("new");
   const [deductions, setDeductions] = useState<Deductions>(defaultDeductions);
   const [initialized, setInitialized] = useState(false);
+  const [taxConfig, setTaxConfig] = useState<YearConfig | null>(null);
+  const [configError, setConfigError] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/tax-config")
+      .then((r) => r.json())
+      .then((data) => {
+        setTaxConfig(data as YearConfig);
+        setConfigError(false);
+      })
+      .catch(() => setConfigError(true));
+  }, []);
 
   useEffect(() => {
     const saved = loadFromStorage();
@@ -114,16 +126,40 @@ export default function Dashboard() {
     [monthlyIncome, otherIncome, incomeFromAbroad, gstRegistered, taxRegime, deductions]
   );
 
-  const result = useMemo(() => calculateTax(taxInput), [taxInput]);
+  const result = useMemo(() => {
+    if (!taxConfig) return null;
+    return calculateTax(taxInput, taxConfig);
+  }, [taxInput, taxConfig]);
 
   const comparison = useMemo(() => {
-    return compareRegimes(taxInput);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taxInput]);
+    if (!taxConfig) return null;
+    return compareRegimes(taxInput, taxConfig);
+  }, [taxInput, taxConfig]);
 
   const handleDeductionChange = (key: keyof Deductions, value: number) => {
     setDeductions((prev) => ({ ...prev, [key]: value }));
   };
+
+  if (configError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="glass-card p-8 text-center max-w-md">
+          <div className="text-red-400 text-lg font-semibold mb-2">Configuration Error</div>
+          <p className="text-gray-400 text-sm">
+            Unable to load tax configuration. Please ensure the data file is available and try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!taxConfig || !result || !comparison) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-accent border-t-transparent" />
+      </div>
+    );
+  }
 
   const summaryCards = [
     {
@@ -171,7 +207,7 @@ export default function Dashboard() {
             Freelancer Tax Dashboard
           </h1>
           <p className="text-gray-400 text-sm mt-1">
-            Real-time tax calculations for Indian freelancers
+            Real-time tax calculations for Indian freelancers &middot; {taxConfig.label}
           </p>
         </motion.div>
 
@@ -228,6 +264,7 @@ export default function Dashboard() {
             onIncomeFromAbroadChange={setIncomeFromAbroad}
             onGstRegisteredChange={setGstRegistered}
             onTaxRegimeChange={setTaxRegime}
+            taxConfig={taxConfig}
           />
         )}
 
@@ -236,6 +273,7 @@ export default function Dashboard() {
             deductions={deductions}
             onDeductionChange={handleDeductionChange}
             taxInput={taxInput}
+            taxConfig={taxConfig}
           />
         )}
 
@@ -251,7 +289,7 @@ export default function Dashboard() {
         )}
 
         {activeSection === "savings" && (
-          <SavingsPlanner input={taxInput} />
+          <SavingsPlanner input={taxInput} taxConfig={taxConfig} />
         )}
       </main>
 

@@ -3,13 +3,14 @@
 import { motion } from "framer-motion";
 import { Shield, Heart, Home, Briefcase, PiggyBank, Laptop, BadgeIndianRupee } from "lucide-react";
 import { formatIndianNumber } from "@/lib/formatters";
-import type { Deductions, TaxInput } from "@/lib/taxCalculator";
+import type { Deductions, TaxInput, YearConfig } from "@/lib/taxCalculator";
 import { calculateTax } from "@/lib/taxCalculator";
 
 interface DeductionInputProps {
   deductions: Deductions;
   onDeductionChange: (key: keyof Deductions, value: number) => void;
   taxInput: TaxInput;
+  taxConfig: YearConfig;
 }
 
 const deductionFields: {
@@ -72,15 +73,16 @@ export default function DeductionInput({
   deductions,
   onDeductionChange,
   taxInput,
+  taxConfig,
 }: DeductionInputProps) {
   const zeroDeductions: Deductions = {
     section80C: 0, section80D: 0, hra: 0, homeLoanInterest: 0,
     professionalTax: 0, nps80CCD: 0, businessExpenses: 0,
   };
-  const oldRegimeResult = calculateTax({ ...taxInput, taxRegime: "old" });
+  const oldRegimeResult = calculateTax({ ...taxInput, taxRegime: "old" }, taxConfig);
   const taxSaved =
     oldRegimeResult.totalDeductions > 0
-      ? oldRegimeResult.taxBeforeRebate - calculateTax({ ...taxInput, deductions: zeroDeductions, taxRegime: "old" }).taxBeforeRebate
+      ? oldRegimeResult.taxBeforeRebate - calculateTax({ ...taxInput, deductions: zeroDeductions, taxRegime: "old" }, taxConfig).taxBeforeRebate
       : 0;
 
   if (taxInput.taxRegime === "new") {
